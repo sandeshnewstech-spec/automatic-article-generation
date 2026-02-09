@@ -1,0 +1,9 @@
+trafilatura
+httpx
+lxml
+beautifulsoup4
+fastapi
+uvicorn[standard]
+python-dateutil
+langdetect
+playwright

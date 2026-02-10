@@ -7,6 +7,8 @@ from various news websites using domain-specific configurations.
 
 from fastapi import FastAPI, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel, Field, HttpUrl, validator
 from typing import Optional, List
 import logging
@@ -27,6 +29,10 @@ logger = logging.getLogger(__name__)
 
 # Thread pool for running sync Playwright in async context
 thread_pool = ThreadPoolExecutor(max_workers=4)
+
+# Initialize Article Generator
+from article_generator import ArticleGenerator
+generator = ArticleGenerator()  # Will look for OPENAI_API_KEY environment variable
 
 # Simple in-memory cache with TTL
 _cache = {}
@@ -66,11 +72,22 @@ def set_cached_content(url: str, domain_name: Optional[str], data: dict):
 # Initialize FastAPI app
 app = FastAPI(
     title="Article Extraction API",
-    description="Extract clean article content from news websites",
-    version="1.0.0",
+    description="Extract clean article content from news websites. Visit / for UI.",
+    version="1.1.0",
     docs_url="/docs",
     redoc_url="/redoc"
 )
+
+# Exception Handler
+from fastapi import Request
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    logger = logging.getLogger("api")
+    logger.error(f"Global error: {exc}")
+    return JSONResponse(
+        status_code=500,
+        content={"success": False, "error": "Internal Server Error", "detail": str(exc)},
+    )
 
 # Add CORS middleware
 app.add_middleware(
@@ -80,6 +97,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Mount static files
+app.mount("/static", StaticFiles(directory="static"), name="static")
 
 
 # ============================================================================
@@ -184,24 +204,33 @@ class HealthResponse(BaseModel):
     version: str = Field(..., description="API version")
 
 
+
+
+
 # ============================================================================
 # API Endpoints
 # ============================================================================
 
+@app.get("/", include_in_schema=False)
+async def serve_ui():
+    return FileResponse("static/index.html")
+
 @app.get(
-    "/",
+    "/api/info",
     response_model=dict,
-    summary="API Root",
-    description="Welcome endpoint with API information"
+    summary="API Root Info",
+    description="API information endpoint (previously at /)"
 )
-async def root():
-    """Root endpoint providing API information."""
+async def root_info():
+    """API information."""
     return {
         "message": "Article Extraction API",
-        "version": "1.0.0",
+        "version": "1.1.0",
+        "ui": "/",
         "docs": "/docs",
         "endpoints": {
             "extract": "POST /extract",
+            "generate": "POST /generate",
             "domains": "GET /domains",
             "health": "GET /health"
         }
@@ -410,6 +439,126 @@ async def extract_article_endpoint(request: ExtractionRequest):
                 "detail": str(e)
             }
         )
+
+
+class GenerateRequest(BaseModel):
+    keypoints: str = Field(..., description="Key points for the article")
+    source_urls: List[str] = Field(..., description="List of source URLs to scrape")
+    api_key: Optional[str] = Field(None, description="Optional LLM API key (e.g. for OpenAI)")
+    base_url: Optional[str] = Field(None, description="Optional LLM base URL (e.g. for Ollama)")
+    model: Optional[str] = Field(None, description="Optional model name")
+
+class GenerateResponse(BaseModel):
+    success: bool
+    title: Optional[str] = None
+    content: Optional[str] = None
+    error: Optional[str] = None
+
+
+@app.post(
+    "/generate",
+    response_model=GenerateResponse,
+    summary="Generate Article",
+    description="Generate a news article based on keypoints and scraped source URLs."
+)
+async def generate_article(request: GenerateRequest):
+    """
+    Generate an article using LLM.
+    """
+    try:
+        logger.info("=" * 80)
+        logger.info("GENERATION REQUEST RECEIVED")
+        logger.info(f"Keypoints: {request.keypoints[:100]}...")
+        logger.info(f"Source URLs: {len(request.source_urls)}")
+        logger.info(f"Model: {request.model or 'default'}")
+        logger.info(f"Provider: {'OpenAI' if request.api_key else 'Ollama (Local)'}")
+        logger.info("=" * 80)
+        
+        # We rely on ArticleGenerator defaults (which support Ollama)
+        pass
+        
+        loop = asyncio.get_event_loop()
+        
+        # STEP 1: SCRAPING
+        logger.info("STEP 1/3: SCRAPING SOURCE URLS")
+        scrape_tasks = []
+        scraped_texts = []
+        for url in request.source_urls:
+             # run_in_executor returns a Future, which we can await in gather
+             scrape_tasks.append(
+                 loop.run_in_executor(
+                     thread_pool,
+                     extract_article,
+                     url,
+                     None,
+                     None
+                 )
+             )
+        
+        if scrape_tasks:
+            logger.info(f"Scraping {len(scrape_tasks)} URLs in parallel...")
+            results = await asyncio.gather(*scrape_tasks, return_exceptions=True)
+            
+            for url, content_or_err in zip(request.source_urls, results):
+                if isinstance(content_or_err, Exception):
+                    logger.error(f"Failed to scrape {url}: {content_or_err}")
+                    continue
+                    
+                content = content_or_err
+                if content:
+                     # Limit content length to avoid token limits if necessary
+                     if len(content) > 12000:
+                         content = content[:12000] + "...(truncated)"
+                     
+                     scraped_texts.append(f"Source: {url}\n{content}")
+                     logger.info(f"✓ Scraped {url} ({len(content)} chars)")
+                else:
+                     logger.warning(f"✗ No content extracted from {url}")
+        
+        # STEP 2: PROCESSING
+        logger.info("STEP 2/3: PROCESSING SCRAPED CONTENT")
+        if not scraped_texts:
+             logger.warning("Could not scrape valid content from any source URL. Attempting generation with keypoints only.")
+             combined_text = "No source content available. Generate based on Keypoints only."
+        else:
+             combined_text = "\n\n".join(scraped_texts)
+             logger.info(f"Combined content: {len(combined_text)} characters")
+        
+        # STEP 3: GENERATING
+        logger.info("STEP 3/3: GENERATING ARTICLE WITH LLM")
+        logger.info(f"Calling LLM with {len(request.keypoints)} char keypoints and {len(combined_text)} char context")
+        
+        # Call LLM logic with optional params
+        result = await generator.generate_article_from_text(
+            request.keypoints, 
+            combined_text,
+            api_key=request.api_key,
+            base_url=request.base_url,
+            model=request.model
+        )
+        
+        if result.get("success"):
+            logger.info("=" * 80)
+            logger.info("GENERATION SUCCESSFUL")
+            logger.info(f"Title: {result.get('title', 'N/A')[:80]}...")
+            logger.info(f"Content length: {len(result.get('content', ''))} chars")
+            logger.info("=" * 80)
+            
+            return GenerateResponse(
+                success=True,
+                title=result.get("title"),
+                content=result.get("content")
+            )
+        else:
+            logger.error(f"Generation failed: {result.get('error')}")
+            raise HTTPException(status_code=500, detail=result.get("error", "Unknown generation error"))
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Generation error: {e}")
+        logger.exception("Full traceback:")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 # ============================================================================

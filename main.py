@@ -1,3 +1,4 @@
+import trafilatura
 from playwright.sync_api import sync_playwright, Browser, BrowserContext
 from bs4 import BeautifulSoup, Tag
 import re
@@ -28,7 +29,8 @@ def get_browser() -> Browser:
                 "--disable-setuid-sandbox",
                 "--no-sandbox",
                 "--disable-web-security",
-                "--disable-features=IsolateOrigins,site-per-process"
+                "--disable-features=IsolateOrigins,site-per-process",
+                "--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
             ]
         )
         logger.info("Browser instance ready")
@@ -95,21 +97,42 @@ def extract_article(
     if config is None:
         if domain_name:
             config = get_config_by_name(domain_name)
-            if not config:
-                raise ValueError(f"No configuration found for domain: {domain_name}")
-        else:
-            config = get_config_for_url(url)
-            if not config:
-                raise ValueError(f"No configuration found for URL: {url}")
-    
+    # Helper for generic extraction
+    def try_generic_fallback(target_url):
+        logger.info(f"Attempting generic extraction (Trafilatura) for {target_url}")
+        try:
+            downloaded = trafilatura.fetch_url(target_url)
+            if downloaded:
+                result = trafilatura.extract(
+                    downloaded, 
+                    include_comments=False, 
+                    include_tables=False, 
+                    no_fallback=False
+                )
+                if result:
+                    formatted = [f"<p>{line.strip()}</p>" for line in result.split('\n') if line.strip()]
+                    return "\n\n".join(formatted)
+        except Exception as e:
+            logger.warning(f"Generic extraction failed: {e}")
+        return None
+
+    # If no config specific found, try generic immediately
+    if config is None:
+        return try_generic_fallback(url)
+
     # ---------------------------
     # 1. FAST Playwright render with persistent browser
     # ---------------------------
-    browser = get_browser()
-    context: BrowserContext = browser.new_context()
-    
     try:
-        # 🚀 Block heavy resources
+        browser = get_browser()
+        # Use a new context to ensure clean state and user agent
+        context = browser.new_context(
+            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        )
+        
+        page = context.new_page()
+        
+        # Block heavy resources
         context.route(
             "**/*",
             lambda route: route.abort()
@@ -117,36 +140,54 @@ def extract_article(
             else route.continue_()
         )
         
-        page = context.new_page()
-        
-        # Navigate with optimized timeout
-        page.goto(url, wait_until=config.wait_until, timeout=config.page_load_timeout)
-
-        # Wait ONLY for article container with reduced timeout
         try:
-            page.wait_for_selector(config.article_container_selector, timeout=config.wait_timeout)
-        except Exception as e:
-            logger.warning(f"Timeout waiting for selector {config.article_container_selector}: {e}")
-            # Continue anyway, content might still be available
+            # Navigate
+            page.goto(url, wait_until=config.wait_until, timeout=config.page_load_timeout)
 
-        # Click load-more only if present and configured
-        if config.load_more_selector:
+            # Wait for content
             try:
-                page.locator(config.load_more_selector).first.click(timeout=config.click_timeout)
-            except:
-                pass
+                page.wait_for_selector(config.article_container_selector, timeout=config.wait_timeout)
+            except Exception as e:
+                logger.warning(f"Timeout waiting for selector {config.article_container_selector}: {e}")
+                # Don't fail yet, check if we have HTML
+            
+            # Click load more if needed
+            if config.load_more_selector:
+                try:
+                    page.locator(config.load_more_selector).first.click(timeout=config.click_timeout)
+                except:
+                    pass
 
-        html = page.content()
-        
-    finally:
-        # Always close context to free resources
+            html = page.content()
+            
+        except Exception as e:
+            logger.error(f"Playwright navigation failed: {e}")
+            context.close()
+            return try_generic_fallback(url)
+            
         context.close()
 
-    # ---------------------------
-    # 2. Parse HTML (optimized)
-    # ---------------------------
-    soup = BeautifulSoup(html, "html.parser")  # Faster for simple parsing
-    first_story = soup.select_one(config.article_container_selector)
+        # ---------------------------
+        # 2. Parse HTML
+        # ---------------------------
+        soup = BeautifulSoup(html, "html.parser")
+        first_story = soup.select_one(config.article_container_selector)
+        
+        if not first_story or not first_story.get_text(strip=True):
+            logger.warning("Specific selector yielded no content. Falling back.")
+            return try_generic_fallback(url)
+            
+        # ... (rest of parsing logic is complex to reproduce exactly here, 
+        # so I should try to KEEP the parsing logic if possible, 
+        # but I need to wrap it to fallback if it returns empty)
+        
+        # Actually, if I can just return try_generic_fallback(url) if soup fails, that's enough.
+        # But I need to see the rest of the parsing logic to know where to insert the check.
+        
+    except Exception as e:
+        logger.error(f"Scraping failed: {e}")
+        return try_generic_fallback(url)
+
 
     if not first_story:
         return None

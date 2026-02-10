@@ -1,0 +1,386 @@
+<!DOCTYPE html>
+<html lang="gu" class="h-full bg-black">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ન્યૂઝરૂમ AI - ગુજરાતી સમાચાર જનરેટર</title>
+
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Noto+Sans+Gujarati:wght@300;400;500;600;700&family=Space+Grotesk:wght@300;400;500;600;700&display=swap"
+        rel="stylesheet">
+
+    <!-- Icons -->
+    <link href="https://cdn.jsdelivr.net/npm/remixicon@3.5.0/fonts/remixicon.css" rel="stylesheet">
+
+    <!-- Tailwind -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        newsroom: {
+                            dark: '#0a0a0a',
+                            darker: '#050505',
+                            border: '#1a1a1a',
+                            accent: '#ffffff'
+                        }
+                    },
+                    fontFamily: {
+                        gujarati: ['Noto Sans Gujarati', 'sans-serif'],
+                        mono: ['Space Grotesk', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+
+    <style>
+        body {
+            background: #000;
+            color: #fff;
+            font-family: 'Noto Sans Gujarati', sans-serif;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        ::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: #000;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: #333;
+            border-radius: 3px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: #555;
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+            }
+
+            to {
+                opacity: 1;
+            }
+        }
+
+        .animate-fade-in {
+            animation: fadeIn 0.3s ease-out forwards;
+        }
+
+        input,
+        select,
+        textarea {
+            background-color: #080808 !important;
+            border: 1px solid #333 !important;
+            color: #fff !important;
+            border-radius: 4px !important;
+        }
+
+        input:focus,
+        select:focus,
+        textarea:focus {
+            border-color: #fff !important;
+            outline: none;
+            box-shadow: 0 0 0 1px #fff;
+        }
+
+        .newsroom-header {
+            background: linear-gradient(135deg, #1a1a1a 0%, #0a0a0a 100%);
+            border-bottom: 2px solid #333;
+        }
+
+        .editorial-badge {
+            background: #fff;
+            color: #000;
+            padding: 2px 8px;
+            border-radius: 3px;
+            font-size: 9px;
+            font-weight: 700;
+            letter-spacing: 0.5px;
+        }
+    </style>
+</head>
+
+<body class="h-screen flex text-white overflow-hidden bg-black">
+
+    <!-- Sidebar -->
+    <aside class="w-72 flex flex-col border-r border-[#1a1a1a] bg-black z-50">
+        <!-- Brand -->
+        <div class="newsroom-header p-6">
+            <div class="flex items-center gap-3 mb-3">
+                <div class="w-12 h-12 bg-white rounded flex items-center justify-center text-black">
+                    <i class="ri-newspaper-line text-2xl"></i>
+                </div>
+                <div>
+                    <h1 class="font-bold text-xl font-gujarati tracking-tight">ન્યૂઝરૂમ AI</h1>
+                    <div class="text-[9px] text-green-500 font-mono flex items-center gap-1.5 mt-0.5">
+                        <span class="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse"></span>
+                        SYSTEM ONLINE
+                    </div>
+                </div>
+            </div>
+            <div class="editorial-badge font-mono">GUJARATI NEWSROOM EDITION</div>
+        </div>
+
+        <!-- Configuration -->
+        <div class="flex-1 overflow-y-auto p-6">
+            <div class="text-[10px] uppercase tracking-widest text-[#666] font-mono mb-4">કન્ફિગરેશન</div>
+
+            <div class="space-y-5">
+                <!-- AI Provider -->
+                <div>
+                    <label class="text-[10px] uppercase text-[#888] font-mono block mb-2">AI પ્રોવાઈડર</label>
+                    <div class="relative">
+                        <select id="model-provider"
+                            class="w-full text-xs py-2.5 px-3 font-mono cursor-pointer appearance-none hover:border-[#555]"
+                            onchange="toggleProviderSettings()">
+                            <option value="ollama" selected>લોકલ (Ollama)</option>
+                            <option value="google">Google Gemini</option>
+
+                        </select>
+                        <i class="ri-arrow-down-s-line absolute right-3 top-2.5 text-[#666] pointer-events-none"></i>
+                    </div>
+                </div>
+
+
+
+                <!-- Gemini Settings -->
+                <div id="gemini-settings" class="hidden space-y-3 pl-2 border-l border-[#333] animate-fade-in">
+                    <input type="password" id="gemini-key" class="w-full text-xs px-3 py-2 font-mono"
+                        placeholder="Gemini API Key..." />
+                    <div class="relative">
+                        <select id="gemini-model"
+                            class="w-full text-xs px-3 py-2.5 font-mono cursor-pointer appearance-none hover:border-[#555]">
+                            <option value="gemini-1.5-flash" selected>Gemini 1.5 Flash (Fast)</option>
+                            <option value="gemini-pro">Gemini Pro (Stable)</option>
+                            <option value="gemini-2.0-flash-exp">Gemini 2.0 Flash (Experimental)</option>
+                        </select>
+                        <i class="ri-arrow-down-s-line absolute right-3 top-2.5 text-[#666] pointer-events-none"></i>
+                    </div>
+                </div>
+
+                <!-- Ollama Settings -->
+                <div id="ollama-settings" class="space-y-3 pl-2 border-l border-[#333] animate-fade-in">
+                    <input type="text" id="ollama-url" class="w-full text-xs px-3 py-2 font-mono"
+                        value="http://localhost:11434/v1" placeholder="Base URL" />
+                    <div class="relative">
+                        <select id="ollama-model"
+                            class="w-full text-xs px-3 py-2.5 font-mono cursor-pointer appearance-none hover:border-[#555]">
+                            <option value="llama3:latest" selected>Llama 3 (Default)</option>
+                            <option value="gemma2:2b">Gemma 2 (2B) - Fast</option>
+                            <option value="qwen2.5:7b">Qwen 2.5 (7B)</option>
+                        </select>
+                        <i class="ri-arrow-down-s-line absolute right-3 top-2.5 text-[#666] pointer-events-none"></i>
+                    </div>
+                </div>
+
+                <!-- Editorial Guidelines -->
+                <div class="mt-6 pt-6 border-t border-[#1a1a1a]">
+                    <div class="text-[10px] uppercase tracking-widest text-[#666] font-mono mb-3">સંપાદકીય માર્ગદર્શિકા
+                    </div>
+                    <div class="space-y-2 text-[10px] text-[#888] font-gujarati leading-relaxed">
+                        <div class="flex items-start gap-2">
+                            <i class="ri-checkbox-circle-fill text-green-500 mt-0.5"></i>
+                            <span>હેડલાઇન: 8-18 શબ્દો</span>
+                        </div>
+                        <div class="flex items-start gap-2">
+                            <i class="ri-checkbox-circle-fill text-green-500 mt-0.5"></i>
+                            <span>પ્રથમ ફકરો: 50 શબ્દો (5W1H)</span>
+                        </div>
+                        <div class="flex items-start gap-2">
+                            <i class="ri-checkbox-circle-fill text-green-500 mt-0.5"></i>
+                            <span>કુલ લંબાઈ: 140-180 શબ્દો</span>
+                        </div>
+                        <div class="flex items-start gap-2">
+                            <i class="ri-checkbox-circle-fill text-green-500 mt-0.5"></i>
+                            <span>પંચ લાઈન આવશ્યક</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Footer -->
+        <div class="mt-auto p-6 border-t border-[#1a1a1a]">
+            <div class="text-[10px] text-[#444] font-mono text-center">v2.0 // GUJARATI NEWSROOM AI</div>
+        </div>
+    </aside>
+
+    <!-- Main Content -->
+    <main class="flex-1 flex bg-black relative">
+
+        <!-- Input Column -->
+        <div class="w-1/2 h-full flex flex-col border-r border-[#1a1a1a] bg-[#050505]">
+            <div class="flex-1 overflow-y-auto p-8">
+                <div class="max-w-lg mx-auto space-y-8">
+
+                    <!-- Section 1: Keypoints -->
+                    <div>
+                        <div class="flex justify-between items-end mb-2">
+                            <label class="text-xs uppercase font-bold tracking-wider text-[#888] font-mono">1. મુખ્ય
+                                મુદ્દાઓ (Keypoints)</label>
+                            <span class="text-[10px] text-[#444] font-mono">આવશ્યક</span>
+                        </div>
+                        <textarea id="keypoints-input"
+                            class="w-full h-48 p-4 text-sm font-gujarati leading-relaxed resize-none focus:ring-1 focus:ring-white transition-all"
+                            placeholder="સમાચારના મુખ્ય મુદ્દાઓ, તથ્યો અથવા ઘટનાનો સારાંશ અહીં લખો...
+
+ઉદાહરણ:
+પાકિસ્તાન, ઈસ્લામાબાદ, મસ્જિદમાં વિસ્ફોટ, શુક્રવારની નમાઝ દરમિયાન, ઘણા લોકોના મોત થયા"></textarea>
+                    </div>
+
+                    <!-- Section 2: Sources -->
+                    <div>
+                        <div class="flex justify-between items-end mb-3">
+                            <label class="text-xs uppercase font-bold tracking-wider text-[#888] font-mono">2. સ્રોત
+                                સામગ્રી (Sources)</label>
+                            <button onclick="addUrlInput()"
+                                class="text-[10px] uppercase tracking-wider border border-[#333] px-2 py-1 rounded hover:bg-white hover:text-black transition-colors font-mono flex items-center gap-1">
+                                <i class="ri-add-line"></i> URL ઉમેરો
+                            </button>
+                        </div>
+
+                        <div id="url-container" class="space-y-2">
+                            <div class="relative group">
+                                <input type="url" class="w-full text-xs px-4 py-3 font-mono pr-10"
+                                    placeholder="https://example.com/article" onchange="validateUrl(this)">
+                                <button
+                                    class="absolute right-3 top-2.5 text-[#444] hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"
+                                    onclick="removeUrlInput(this)">
+                                    <i class="ri-close-line"></i>
+                                </button>
+                            </div>
+                        </div>
+                        <p class="text-[10px] text-[#444] font-gujarati mt-2 pl-1">નોંધ: લોકલ મોડેલ્સ સાથે જનરેશનમાં 1-2
+                            મિનિટ લાગી શકે છે.</p>
+                    </div>
+
+                    <!-- Actions -->
+                    <div class="pt-4 flex gap-3">
+                        <button onclick="generateArticle()"
+                            class="flex-1 bg-white text-black font-bold uppercase py-3.5 px-6 rounded text-xs tracking-widest hover:bg-[#ddd] transition-transform active:scale-95 shadow-lg shadow-white/5 font-mono flex items-center justify-center gap-2">
+                            <i class="ri-flashlight-fill"></i> સમાચાર બનાવો
+                        </button>
+                        <button onclick="clearForm()"
+                            class="px-5 border border-[#333] text-[#888] hover:text-white hover:border-white rounded transition-colors text-xs font-mono uppercase tracking-widest">
+                            રીસેટ
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- System Logs -->
+            <div
+                class="h-40 border-t border-[#1a1a1a] bg-black p-4 font-mono text-[10px] overflow-hidden flex flex-col">
+                <div class="text-[#444] uppercase tracking-widest mb-2 flex justify-between">
+                    <span>System Output</span>
+                    <span id="log-status" class="animate-pulse hidden text-green-500">PROCESSING</span>
+                </div>
+                <div id="log-content"
+                    class="flex-1 overflow-y-auto space-y-1 text-[#666] pr-2 custom-scrollbar font-mono"></div>
+            </div>
+        </div>
+
+        <!-- Preview Column -->
+        <div class="w-1/2 h-full bg-black relative flex flex-col">
+
+            <!-- Empty State -->
+            <div id="preview-empty"
+                class="absolute inset-0 flex flex-col items-center justify-center p-12 text-center z-10">
+                <div class="w-24 h-24 border border-[#222] rounded-full flex items-center justify-center mb-6">
+                    <i class="ri-article-line text-3xl text-[#333]"></i>
+                </div>
+                <h3 class="text-xl font-mono font-bold text-white mb-2 uppercase tracking-tight">System Ready</h3>
+                <p class="text-xs text-[#555] font-mono max-w-xs">Awaiting input sequence for generation.</p>
+            </div>
+
+            <!-- Loading State -->
+            <div id="preview-loading"
+                class="hidden absolute inset-0 bg-black z-20 flex flex-col items-center justify-center animate-fade-in text-center">
+                <div class="mb-8">
+                    <div class="w-16 h-16 border-2 border-[#222] border-t-white rounded-full animate-spin mx-auto mb-4">
+                    </div>
+                    <h3 class="text-lg font-mono font-bold text-white uppercase tracking-widest animate-pulse">
+                        Generating</h3>
+                    <p class="text-[10px] text-[#555] font-mono mt-2">Please keep this window open</p>
+                </div>
+
+                <div class="w-64 space-y-4 text-left">
+                    <div id="step-scrape" class="flex items-center gap-4 opacity-30 transition-all duration-500">
+                        <div
+                            class="step-icon w-6 h-6 border border-[#444] rounded flex items-center justify-center text-[10px] font-mono">
+                            1</div>
+                        <div class="text-xs font-mono uppercase tracking-wider text-[#888]">Scraping</div>
+                    </div>
+                    <div id="step-process" class="flex items-center gap-4 opacity-30 transition-all duration-500">
+                        <div
+                            class="step-icon w-6 h-6 border border-[#444] rounded flex items-center justify-center text-[10px] font-mono">
+                            2</div>
+                        <div class="text-xs font-mono uppercase tracking-wider text-[#888]">Processing</div>
+                    </div>
+                    <div id="step-generate" class="flex items-center gap-4 opacity-30 transition-all duration-500">
+                        <div
+                            class="step-icon w-6 h-6 border border-[#444] rounded flex items-center justify-center text-[10px] font-mono">
+                            3</div>
+                        <div class="text-xs font-mono uppercase tracking-wider text-[#888]">Generating</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Content State -->
+            <div id="preview-content"
+                class="hidden flex-1 overflow-y-auto p-12 custom-scrollbar animate-slide-up bg-[#050505] relative z-10 w-full">
+                <!-- Toolbar -->
+                <div
+                    class="flex justify-end gap-2 mb-8 sticky top-0 bg-[#050505]/90 backdrop-blur py-2 border-b border-[#222]">
+                    <button onclick="copyContent()"
+                        class="text-[10px] uppercase border border-[#333] hover:border-white px-3 py-1.5 rounded transition-colors font-mono flex items-center gap-2">
+                        <i class="ri-file-copy-line"></i> Copy
+                    </button>
+                    <button onclick="downloadJSON()"
+                        class="text-[10px] uppercase border border-[#333] hover:border-white px-3 py-1.5 rounded transition-colors font-mono flex items-center gap-2">
+                        <i class="ri-download-line"></i> JSON
+                    </button>
+                </div>
+
+                <div class="mb-8 pb-8 border-b border-[#222]">
+                    <div class="text-[10px] font-mono text-[#555] uppercase tracking-widest mb-4 flex gap-4">
+                        <span id="meta-time">NOW</span>
+                        <span id="meta-sources">SOURCES: 0</span>
+                        <span id="meta-length">WORDS: 0</span>
+                    </div>
+                    <h1 id="article-title"
+                        class="text-4xl md:text-5xl font-bold leading-tight font-gujarati tracking-tight">શીર્ષક અહીં
+                        આવશે</h1>
+                </div>
+
+                <div id="article-body"
+                    class="prose prose-invert prose-lg max-w-none font-gujarati text-gray-300 leading-relaxed space-y-6">
+                    <!-- Content -->
+                </div>
+
+                <div
+                    class="mt-16 pt-8 border-t border-[#222] flex justify-between text-[10px] font-mono text-[#333] uppercase">
+                    <div>Generated by Newsroom AI</div>
+                    <div>END OF FILE</div>
+                </div>
+            </div>
+
+        </div>
+    </main>
+
+    <script src="/static/script.js"></script>
+</body>
+
+</html>
